@@ -5,54 +5,66 @@
 #include <EthernetServer.h>
 #include <EthernetClient.h>
 
+#include <Adafruit_Sensor.h>
 #include <DHT.h>
+#include <DHT_U.h>
+
+
+// Broadcast readings
 #include <ArduinoJson.h>
-//#include <DateTime.h>
-//#include <DateTimeStrings.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
-#include <time.h>
-#include <WiFiUdp.h>
 
+// Time Requirements
+#include <Wire.h> // must be included here so that Arduino library object file references work
+#include <RtcDS3231.h>
+RtcDS3231<TwoWire> Rtc(Wire);
 
 /*
  * Read ambient light with a photoresistor
  * Read temp and humidity from a DHT 11
  * Blinks the LED when taking a reading
+ * 
+ * RTC:
+ * SDA => D2
+ * SCL => D1
+ * 
+ * Photo Resistor:
+ * Negative side goes to A0
+ * 
+ * DHT11 (L to R while looking at the device):
+ * 1 -> VCC
+ * 2 -> D3 && resistor -> VCC
+ * 3 -> empty
+ * 4 -> GND
  */
 
-#define DHTPIN 2
+#define DHTPIN 0 // GPIO0 = D3 on the esp8266
 #define DHTTYPE DHT11
+
+// used in time calc
+#define countof(a) (sizeof(a) / sizeof(a[0]))
 
 int sensorPin = A0;    // select the input pin for the potentiometer
 int ledPin = 13;      // select the pin for the LED
 int lightValue = 0;  // variable to store the value coming from the sensor
-int delayBetweenReadings = 5000; // in ms
+int delayBetweenReadings = 15000; // in ms
+
 const char* ssid     = "lolpackets-2.4G";
 const char* password = "BryceRules";
 
+//StaticJsonBuffer<200> jsonBuffer; // increase the value of 200 if the json string gets larger
+///JsonObject& json = jsonBuffer.createObject();
+
+// DHT_Unified dht(DHTPIN, DHTTYPE);
 DHT dht(DHTPIN, DHTTYPE);
-StaticJsonBuffer<200> jsonBuffer; // increase the value of 200 if the json string gets larger
-JsonObject& json = jsonBuffer.createObject();
-
-// for time:
-unsigned int localPort = 2390; 
-IPAddress timeServerIP; // time.nist.gov NTP server address
-const char* ntpServerName = "time.nist.gov";
-const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
-
-byte packetBuffer[ NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
-
-// A UDP instance to let us send and receive packets over UDP
-WiFiUDP udp;
 
 void setup() {
   // declare the ledPin as an OUTPUT:
   pinMode(ledPin, OUTPUT);
   dht.begin();
-
   Serial.begin(115200);
-
+/* NETWORK SET UP */
   Serial.print("Connecting to ");
   Serial.println(ssid);
   
@@ -68,94 +80,170 @@ void setup() {
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
 
-  Serial.print("time: ");
-  Serial.println("Starting UDP");
-  udp.begin(localPort);
-  Serial.print("Local port: ");
-  Serial.println(udp.localPort());
+
+    //--------RTC SETUP ------------
+    Serial.print("[RTC] compiled: ");
+    Serial.print(__DATE__);
+    Serial.println(__TIME__);
+    Rtc.Begin();
+
+    // if you are using ESP-01 then uncomment the line below to reset the pins to
+    // the available pins for SDA, SCL
+    // Wire.begin(0, 2); // due to limited pins, use pin 0 and 2 for SDA, SCL
+
+    RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
+    printDateTime(compiled);
+    Serial.println();
+
+    if (!Rtc.IsDateTimeValid()) 
+    {
+        // Common Cuases:
+        //    1) first time you ran and the device wasn't running yet
+        //    2) the battery on the device is low or even missing
+
+        Serial.println("RTC lost confidence in the DateTime!");
+
+        // following line sets the RTC to the date & time this sketch was compiled
+        // it will also reset the valid flag internally unless the Rtc device is
+        // having an issue
+
+        Rtc.SetDateTime(compiled);
+    }
+
+    if (!Rtc.GetIsRunning())
+    {
+        Serial.println("RTC was not actively running, starting now");
+        Rtc.SetIsRunning(true);
+    }
+
+    RtcDateTime now = Rtc.GetDateTime();
+    if (now < compiled) 
+    {
+        Serial.println("RTC is older than compile time!  (Updating DateTime)");
+        Rtc.SetDateTime(compiled);
+    }
+    else if (now > compiled) 
+    {
+        Serial.println("RTC is newer than compile time. (this is expected)");
+    }
+    else if (now == compiled) 
+    {
+        Serial.println("RTC is the same as compile time! (not expected but all is fine)");
+    }
+
+    // never assume the Rtc was last configured by you, so
+    // just clear them to your needed state
+    Rtc.Enable32kHzPin(false);
+    Rtc.SetSquareWavePin(DS3231SquareWavePin_ModeNone); 
 
 }
 
+float h;
+float t;
+float hic;
 void loop() {
-  // Blink the LED to indicate it's taking a reading
-  // turn the ledPin on
-  digitalWrite(ledPin, HIGH);
-  // stop the program for <sensorValue> milliseconds:
+  
+  // TODO figure out how to do this more rationally
+  // RESET JSON
+  StaticJsonBuffer<200> jsonBuffer; // increase the value of 200 if the json string gets larger
+  JsonObject& json = jsonBuffer.createObject();
+  //json.remove("light");
+  //json.remove("humidity");
+  //json.remove("temp_celcius");
+  //json.remove("heat_index");
+  //json.remove("capture_dttm");
+
   delay(500);
-  // turn the ledPin off:
+  
+  Serial.println("[JSON] FIRST");
+  json.prettyPrintTo(Serial);
+  Serial.println();
+  
+  // Blink the LED to indicate it's taking a reading
+  digitalWrite(ledPin, HIGH);
+  delay(500);
   digitalWrite(ledPin, LOW);
 
   // read the value from the sensor:
+  Serial.println("[LIGHT] reading light");
   lightValue = analogRead(sensorPin);
+  Serial.print("[LIGHT] light read ");
+  Serial.println(lightValue);
 
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-  float h = dht.readHumidity();
+  //sensors_event_t event;  
+  //dht.temperature().getEvent(&event);
+  //dht.humidity().getEvent(&event);
+  Serial.println("[TEMP] starting temp");
+  h = dht.readHumidity();//event.relative_humidity;
+  delay(275);
   // Read temperature as Celsius (the default)
-  float t = dht.readTemperature();
-  // Read temperature as Fahrenheit (isFahrenheit = true)
-  float f = dht.readTemperature(true);
-
+  t =  dht.readTemperature(); //event.temperature;
+  delay(275);
+  // Compute heat index in Celsius (isFahreheit = false)
+  hic = dht.computeHeatIndex(t, h, false);
+  delay(275);
   // Check if any reads failed and exit early (to try again).
   if (isnan(h) || isnan(t)) {
-    Serial.println("Failed to read from DHT sensor!");
+    Serial.println("[TEMP] Failed to read from DHT sensor!");
     delay(delayBetweenReadings);
     return;
-  }
+  } else {
+    Serial.print("[TEMP] temp: ");
+    Serial.println(t);
+    
+    Serial.print("[TEMP] humidity: ");
+    Serial.println(h);
 
-  // Compute heat index in Celsius (isFahreheit = false)
-  float hic = dht.computeHeatIndex(t, h, false);
+    Serial.print("[TEMP] heat index: ");
+    Serial.println(hic);
+    
+  }
+  Serial.println("[TEMP] done temp");
+
+  // TIME CODE:
+  Serial.println("[TIME] starting time");
+  if (!Rtc.IsDateTimeValid()) 
+    {
+        // Common Cuases:
+        //    1) the battery on the device is low or even missing and
+        //    the power line was disconnected
+        Serial.println("RTC lost confidence in the DateTime!");
+    }
+
+    RtcDateTime now = Rtc.GetDateTime();
+    char datestring[20];
+
+    snprintf_P(datestring, 
+            countof(datestring),
+            PSTR("%04u-%02u-%02uT%02u:%02u:%02u"),
+            now.Year(),
+            now.Month(),
+            now.Day(),
+            now.Hour(),
+            now.Minute(),
+            now.Second() );
+  Serial.print("[TIME] time is ");
+  Serial.println(datestring);
 
   json["light"] = lightValue;
   json["humidity"] = h;
   json["temp_celcius"] = t;
   json["heat_index"] = hic;
+  json["capture_dttm"] = datestring;
 
+  delay(260);
+  Serial.println("[JSON] populated:");
   json.prettyPrintTo(Serial);
-
-  //get a random server from the pool
-  WiFi.hostByName(ntpServerName, timeServerIP); 
-
-  sendNTPpacket(timeServerIP); // send an NTP packet to a time server
-  // wait to see if a reply is available
-  delay(5000);
-  int cb = udp.parsePacket();
-  unsigned long epoch = 0;
-  if (!cb) {
-    Serial.println("no packet yet");
-  } else {
-    Serial.print("packet received, length=");
-    Serial.println(cb);
-    // We've received a packet, read the data from it
-    udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
-
-    //the timestamp starts at byte 40 of the received packet and is four bytes,
-    // or two words, long. First, esxtract the two words:
-
-    unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
-    unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
-    // combine the four bytes (two words) into a long integer
-    // this is NTP time (seconds since Jan 1 1900):
-    unsigned long secsSince1900 = highWord << 16 | lowWord;
-    Serial.print("Seconds since Jan 1 1900 = " );
-    Serial.println(secsSince1900);
-
-    // now convert NTP time into everyday time:
-    Serial.print("Unix time = ");
-    // Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
-    const unsigned long seventyYears = 2208988800UL;
-    // subtract seventy years:
-    epoch = secsSince1900 - seventyYears;
-    // print Unix time:
-    Serial.println(epoch);
-  }
-  json["capture_dttm"] = epoch;
-
+  Serial.println();
 
   char postable[1024];
-  Serial.print("postable size: ");
-  Serial.println(sizeof(postable));
+  //Serial.print("postable size: ");
+  //Serial.println(sizeof(postable));
   json.printTo(postable, sizeof(postable));
+
+/* SAVE
   // POST IT
   HTTPClient http;
   http.begin("http://10.1.2.109:9999");
@@ -163,31 +251,24 @@ void loop() {
   http.POST(postable);
   http.writeToStream(&Serial);
   http.end();
-
+*/
+  Serial.println("[DONE]---");
   delay(delayBetweenReadings);
+
 }
 
-// send an NTP request to the time server at the given address
-unsigned long sendNTPpacket(IPAddress& address)
+void printDateTime(const RtcDateTime& dt)
 {
-  Serial.println("sending NTP packet...");
-  // set all bytes in the buffer to 0
-  memset(packetBuffer, 0, NTP_PACKET_SIZE);
-  // Initialize values needed to form NTP request
-  // (see URL above for details on the packets)
-  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-  packetBuffer[1] = 0;     // Stratum, or type of clock
-  packetBuffer[2] = 6;     // Polling Interval
-  packetBuffer[3] = 0xEC;  // Peer Clock Precision
-  // 8 bytes of zero for Root Delay & Root Dispersion
-  packetBuffer[12]  = 49;
-  packetBuffer[13]  = 0x4E;
-  packetBuffer[14]  = 49;
-  packetBuffer[15]  = 52;
+    char datestring[20];
 
-  // all NTP fields have been given values, now
-  // you can send a packet requesting a timestamp:
-  udp.beginPacket(address, 123); //NTP requests are to port 123
-  udp.write(packetBuffer, NTP_PACKET_SIZE);
-  udp.endPacket();
+    snprintf_P(datestring, 
+            countof(datestring),
+            PSTR("%04u-%02u-%02uT%02u:%02u:%02u"),
+            dt.Year(),
+            dt.Month(),
+            dt.Day(),
+            dt.Hour(),
+            dt.Minute(),
+            dt.Second() );
+    Serial.print(datestring);
 }

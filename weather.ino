@@ -45,12 +45,8 @@ int delayBetweenReadings = 15000; // in ms
 const char* ssid     = "lolpackets-2.4G";
 const char* password = "BryceRules";
 
-
 //const char* persistHost = "http://10.1.2.128:9999/foo";
 const char* persistHost = "http://web01.thedevranch.net:9200/weather/device001";
-
-//StaticJsonBuffer<200> jsonBuffer; // increase the value of 200 if the json string gets larger
-///JsonObject& json = jsonBuffer.createObject();
 
 // DHT_Unified dht(DHTPIN, DHTTYPE);
 DHT dht(DHTPIN, DHTTYPE);

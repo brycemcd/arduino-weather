@@ -1,3 +1,6 @@
+//#define MQTT_MAX_PACKET_SIZE 512
+//#define MQTT_MAX_TRANSFER_SIZE 512
+
 #include <Dhcp.h>
 #include <Dns.h>
 #include <Ethernet.h>
@@ -15,6 +18,7 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 #include <PubSubClient.h>
+
 
 // Time Requirements
 #include <Wire.h> // must be included here so that Arduino library object file references work
@@ -40,6 +44,7 @@ RtcDS3231<TwoWire> Rtc(Wire);
  * 4 -> GND
  */
 
+
 #define DHTPIN 0 // GPIO0 = D3 on the esp8266
 #define DHTTYPE DHT11
 
@@ -56,6 +61,9 @@ const char* password = "BryceRules";
 
 const char* mqtt_server = "spark4.thedevranch.net";
 const char* weather_topic = "weather";
+
+//const char* persistHost = "http://10.1.2.128:9999/foo";
+const char* persistHost = "http://web01.thedevranch.net:9200/weather/device001";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -149,11 +157,8 @@ void loop() {
   
   // TODO figure out how to do this more rationally
   // RESET JSON
-  StaticJsonBuffer<200> jsonBuffer; // increase the value of 200 if the json string gets larger
+  StaticJsonBuffer<300> jsonBuffer; // increase the value of 200 if the json string gets larger
   JsonObject& json = jsonBuffer.createObject();
-
-
-  delay(500);
   
   Serial.println("[JSON] FIRST");
   json.prettyPrintTo(Serial);
@@ -172,9 +177,6 @@ void loop() {
 
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-  //sensors_event_t event;  
-  //dht.temperature().getEvent(&event);
-  //dht.humidity().getEvent(&event);
   Serial.println("[TEMP] starting temp");
   h = dht.readHumidity();//event.relative_humidity;
   delay(275);
@@ -200,6 +202,10 @@ void loop() {
     Serial.println(hic);
     
   }
+  RtcTemperature temp_rtc = Rtc.GetTemperature();
+  Serial.print("[TEMP] temp from RTC: ");
+  Serial.println(temp_rtc.AsFloat());
+  
   Serial.println("[TEMP] done temp");
 
   // TIME CODE:
@@ -230,6 +236,10 @@ void loop() {
   json["light"] = lightValue;
   json["humidity"] = h;
   json["temp_celcius"] = t;
+  json["temp_rtc_celcius"] = temp_rtc.AsFloat();
+  // FIXME: something about the size of this message is getting rejected
+  // when publishing to the MQTT broker. It seems to be a limitation
+  // of this arduino library and not the broker software itself
   json["heat_index"] = hic;
   json["capture_dttm"] = datestring;
 
@@ -238,24 +248,31 @@ void loop() {
   json.prettyPrintTo(Serial);
   Serial.println();
 
-  char postable[1024];
-  //Serial.print("postable size: ");
-  //Serial.println(sizeof(postable));
-  json.printTo(postable, sizeof(postable));
+  char postable[200];
+  json.printTo(postable);
 
-/* SAVE
+  if (!client.connected()) {
+    reconnect();
+  }
+  Serial.print("publishing topic: ");
+  Serial.print(client.state());
+  Serial.print(" ");
+  Serial.print(sizeof(postable));
+  Serial.print(" ");
+  Serial.print(MQTT_MAX_PACKET_SIZE);
+  Serial.print(" ");
+  Serial.println( client.publish(weather_topic, postable, sizeof(postable)) );
+
+
   // POST IT
+  Serial.println("[NETWORK] posting json request");
   HTTPClient http;
-  http.begin("http://10.1.2.109:9999");
+  http.begin(persistHost);
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
   http.POST(postable);
   http.writeToStream(&Serial);
   http.end();
-*/
-  if (!client.connected()) {
-    reconnect();
-  }
-  client.publish(weather_topic, postable );
+  
   client.loop();
   Serial.println("[DONE]---");
   delay(delayBetweenReadings);

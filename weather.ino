@@ -63,7 +63,7 @@ const char* mqtt_server = "spark4.thedevranch.net";
 const char* weather_topic = "weather";
 
 //const char* persistHost = "http://10.1.2.128:9999/foo";
-const char* persistHost = "http://web01.thedevranch.net:9200/weather/device001";
+const char* persistHost = "http://web02.thedevranch.net:9200/weather/device001";
 
 WiFiClient espClient;
 PubSubClient client(espClient);

@@ -7,7 +7,7 @@ void setupNetwork() {
   /* NETWORK SET UP */
   Serial.print("Connecting to ");
   Serial.println(ssid);
-  
+  WiFi.enableAP(0);
   WiFi.begin(ssid, password);
   
   while (WiFi.status() != WL_CONNECTED) {

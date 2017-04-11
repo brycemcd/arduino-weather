@@ -1,6 +1,6 @@
 #include <ESP8266HTTPClient.h>
 
-#define PERSIST_HOST "http://web02.thedevranch.net:9200/weather/device001"
+#define PERSIST_HOST "http://web02.thedevranch.net:9200/weather/device002"
 
 void postToHTTP(char* postable) {
   Serial.println("[NETWORK] posting json request");

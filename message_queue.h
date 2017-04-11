@@ -2,7 +2,7 @@
 // in PubSubClient.h
 #include <PubSubClient.h>
 
-#define MQTT_SERVER "spark4.thedevranch.net"
+#define MQTT_SERVER "mqtt01.thedevranch.net"
 #define WEATHER_TOPIC "weather"
 #define QUEUE_CLIENT_IDENTIFIER "weather001"
 

@@ -1,7 +1,7 @@
 #include <ESP8266WiFi.h>
 
-const char* ssid     = "lolpackets-2.4G";
-const char* password = "BryceRules";
+const char* ssid     = "iot-2.4G";
+const char* password = "i0tconnect";
 
 void setupNetwork() {
   /* NETWORK SET UP */

@@ -21,6 +21,7 @@
 #include <DHT.h>
 #include <DHT_U.h>
 
+
 // Broadcast readings
 #include <ArduinoJson.h>
 
@@ -29,6 +30,7 @@
 #include "light.h"
 #include "time.h"
 #include "http_request.h"
+#include "barometer.h"
 
 
 #define DHTPIN 0 // GPIO0 = D3 on the esp8266
@@ -49,11 +51,17 @@ void setup() {
 
   setupNetwork();
   setupMessageQueue();
+  setupBarometer();
 }
 
 float h;
 float t;
 float hic;
+long pressureValue;
+double baroTemp;
+
+#define ERROR_VALUE -99;
+
 void loop() {
   // RESET JSON
   StaticJsonBuffer<300> jsonBuffer; // increase the value of 200 if the json string gets larger
@@ -70,24 +78,33 @@ void loop() {
 
   // read the value from the sensor:
   lightValue = getLightReading();
-  
+
+  // Using the BMP280 (barometer hw)
+  Serial.println("[Barometer] starting pressure");
+  pressureValue = getPressure();
+  Serial.println("[Barometer] pressure done");
+  Serial.println("[Barometer] getting baro temp");
+  baroTemp = getBarometerTemperature();
+  Serial.println("[Barometer] end baro temp");
+  hic = dht.computeHeatIndex(t, h, false);
+  // Using the DHT 11:
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
   Serial.println("[TEMP] starting temp");
-  h = dht.readHumidity();//event.relative_humidity;
-  delay(275);
-  // Read temperature as Celsius (the default)
-  t =  dht.readTemperature(); //event.temperature;
-  delay(275);
-  // Compute heat index in Celsius (isFahreheit = false)
-  hic = dht.computeHeatIndex(t, h, false);
-  delay(275);
-  // Check if any reads failed and exit early (to try again).
-  if (isnan(h) || isnan(t)) {
-    Serial.println("[TEMP] Failed to read from DHT sensor!");
-    delay(delayBetweenReadings);
-    return;
-  } else {
+  h = dht.readHumidity();
+  t =  dht.readTemperature();
+
+  if (isnan(t)) {
+    Serial.println("[TEMP] temp Failed to read from DHT sensor!");
+    t = ERROR_VALUE;
+    hic = ERROR_VALUE;
+  }
+  if (isnan(h)) {
+    Serial.println("[TEMP] humidity Failed to read from DHT sensor!");
+    h = ERROR_VALUE;
+    hic = ERROR_VALUE;
+  }
+
     Serial.print("[TEMP] temp: ");
     Serial.println(t);
     
@@ -97,8 +114,6 @@ void loop() {
     Serial.print("[TEMP] heat index: ");
     Serial.println(hic);
     
-  }
-  
   Serial.println("[TEMP] done temp");
 
   // TIME CODE:
@@ -108,6 +123,8 @@ void loop() {
   json["humidity"] = h;
   json["temp_celcius"] = t;
   json["heat_index"] = hic;
+  json["pressure_pa"] = pressureValue;
+  json["baro_temp_celcius"] = baroTemp;
   json["capture_dttm"] = currentTime;
 
   Serial.println("[JSON] populated:");

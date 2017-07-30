@@ -31,6 +31,7 @@
 #include "time.h"
 #include "http_request.h"
 #include "barometer.h"
+#include "gas_detection.h"
 
 
 #define DHTPIN 0 // GPIO0 = D3 on the esp8266
@@ -52,6 +53,7 @@ void setup() {
   setupNetwork();
   setupMessageQueue();
   setupBarometer();
+  setupGasSensors();
 }
 
 float h;
@@ -76,6 +78,12 @@ void loop() {
   delay(500);
   digitalWrite(ledPin, LOW);
 
+  // get gas reading
+  MQ135Reading(); // sets variable mq135Value;
+  MQ5Reading(); // sets variable mq5Value;
+  MQ6Reading(); // sets variable mq6Value;
+  MQ9Reading(); // sets variable mq9Value;
+  
   // read the value from the sensor:
   lightValue = getLightReading();
 
@@ -125,6 +133,10 @@ void loop() {
   json["heat_index"] = hic;
   json["pressure_pa"] = pressureValue;
   json["baro_temp_celcius"] = baroTemp;
+  json["mq135"] = mq135Value;
+  json["mq5"] = mq5Value;
+  json["mq6"] = mq6Value;
+  json["mq9"] = mq9Value;
   json["capture_dttm"] = currentTime;
 
   Serial.println("[JSON] populated:");

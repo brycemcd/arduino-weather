@@ -12,19 +12,10 @@ void setupBarometer() {
   }
 }
 
-int getBarometerReading() {
-  Serial.println("[Barometer] reading sensors");
-    
-    
-    Serial.print("[Barometer] Pressure = ");
-    Serial.print(bme.readPressure());
-    Serial.println(" Pa");
-
-    Serial.print("[Barometer] Approx altitude = ");
-    Serial.print(bme.readAltitude(1013.25)); // this should be adjusted to your local forcast
-    Serial.println(" m");
-    
-    Serial.println();
+int getAltitude() {
+  Serial.print("[Barometer] Approx altitude = ");
+  Serial.print(bme.readAltitude(1013.25)); // this should be adjusted based on the known pressure
+  Serial.println(" m");
 }
 
 long getPressure() {

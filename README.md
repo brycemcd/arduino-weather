@@ -6,6 +6,10 @@
 
 ## Changelog
 
+### 2017-08-04
+
+10:30pm Eastern: swap out 22K resistors for 33K resistors
+
 ### 2017-08-02
 
 At around 9pm Eastern, I'm swapping out all the resistors for 22K

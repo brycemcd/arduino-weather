@@ -6,6 +6,10 @@
 
 ## Changelog
 
+### 2017-08-13
+
+14:20 Eastern: moved the whole thing outside again
+
 ### 2017-08-04
 
 10:30pm Eastern: swap out 22K resistors for 33K resistors

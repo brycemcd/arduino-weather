@@ -6,6 +6,14 @@
 
 ## Changelog
 
+### 2018-04-21
+
+Change resistor for light sensor from 1000 to 4700.
+
+Tested the pressure/temperature sensor several times. I think there's a hardware error. Needs replaced.
+
+USB cable seems to be broken too. Needs replacing
+
 ### 2017-08-13
 
 14:20 Eastern: moved the whole thing outside again
